@@ -510,7 +510,8 @@ export class VectorLayer extends AbstractLayer {
     for (let i = 0; i < featureCollection.features.length; i++) {
       const id = randomizedIds[i];
       const feature = featureCollection.features[i];
-      feature.properties[FEATURE_ID_PROPERTY_NAME] = id;
+      // Generate an id which will be the same after every request
+      feature.properties[FEATURE_ID_PROPERTY_NAME] = feature.geometry.coordinates.join(':');
       feature.id = id;
     }
 
