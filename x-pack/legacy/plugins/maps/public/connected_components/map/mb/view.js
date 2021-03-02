@@ -6,7 +6,6 @@
 
 import _ from 'lodash';
 import React from 'react';
-import ReactDOM from 'react-dom';
 import { ResizeChecker } from 'ui/resize_checker';
 import { I18nProvider } from '@kbn/i18n/react';
 import {
@@ -37,6 +36,7 @@ import { spritesheet } from '@elastic/maki';
 import sprites1 from '@elastic/maki/dist/sprite@1.png';
 import sprites2 from '@elastic/maki/dist/sprite@2.png';
 import { DrawTooltip } from './draw_tooltip';
+import { DrawPopup } from './draw_popup';
 
 const mbDrawModes = MapboxDraw.modes;
 mbDrawModes.draw_rectangle = DrawRectangle;
@@ -69,12 +69,6 @@ export class MBMapContainer extends React.Component {
   constructor() {
     super();
     this._mbMap = null;
-    this._tooltipContainer = document.createElement('div');
-    this._mbPopup = new mapboxgl.Popup({
-      closeButton: false,
-      closeOnClick: false,
-      maxWidth: '260px', // width of table columns max-widths plus all padding
-    });
     this._mbDrawControl = new MapboxDraw({
       displayControlsDefault: false,
       modes: mbDrawModes
@@ -322,7 +316,6 @@ export class MBMapContainer extends React.Component {
     if (this._mbMap) {
       this._mbMap.remove();
       this._mbMap = null;
-      this._tooltipContainer = null;
     }
     this.props.onMapDestroyed();
   }
@@ -462,50 +455,6 @@ export class MBMapContainer extends React.Component {
     addSpritesheetToMap(json, sprites, this._mbMap);
   }
 
-  _reevaluateTooltipPosition = () => {
-    // Force mapbox to ensure tooltip does not clip map boundary and move anchor when clipping occurs
-    requestAnimationFrame(() => {
-      if (this._isMounted && this.props.tooltipState && this.props.tooltipState.location) {
-        this._mbPopup.setLngLat(this.props.tooltipState.location);
-      }
-    });
-  }
-
-  _hideTooltip() {
-    if (this._mbPopup.isOpen()) {
-      this._mbPopup.remove();
-      ReactDOM.unmountComponentAtNode(this._tooltipContainer);
-    }
-  }
-
-  _showTooltip() {
-    if (!this._isMounted) {
-      return;
-    }
-    const isLocked = this.props.tooltipState.type === TOOLTIP_TYPE.LOCKED;
-    ReactDOM.render((
-      <I18nProvider>
-        <FeatureTooltip
-          features={this.props.tooltipState.features}
-          anchorLocation={this.props.tooltipState.location}
-          loadFeatureProperties={this._loadFeatureProperties}
-          findLayerById={this._findLayerById}
-          closeTooltip={this._onTooltipClose}
-          showFilterButtons={!!this.props.addFilters && isLocked}
-          isLocked={isLocked}
-          addFilters={this.props.addFilters}
-          geoFields={this.props.geoFields}
-          reevaluateTooltipPosition={this._reevaluateTooltipPosition}
-          loadFeatureGeometry={this._loadFeatureGeometry}
-        />
-      </I18nProvider>
-    ), this._tooltipContainer);
-
-    this._mbPopup.setLngLat(this.props.tooltipState.location)
-      .setDOMContent(this._tooltipContainer)
-      .addTo(this._mbMap);
-  }
-
   // Must load original geometry instead of using geometry from mapbox feature.
   // Mapbox feature geometry is from vector tile and is not the same as the original geometry.
   _loadFeatureGeometry = ({ layerId, featureId }) => {
@@ -542,10 +491,8 @@ export class MBMapContainer extends React.Component {
   _syncTooltipState() {
     if (this.props.tooltipState) {
       this._mbMap.getCanvas().style.cursor = 'pointer';
-      this._showTooltip();
     } else {
       this._mbMap.getCanvas().style.cursor = '';
-      this._hideTooltip();
     }
   }
 
@@ -636,6 +583,30 @@ export class MBMapContainer extends React.Component {
         data-test-subj="mapContainer"
       >
         {drawTooltip}
+
+        {this._mbMap && this.props.tooltipState ? (
+          <DrawPopup map={this._mbMap} location={this.props.tooltipState.location}>
+            {({ updatePosition }) => (
+              <I18nProvider>
+                <FeatureTooltip
+                  features={this.props.tooltipState.features}
+                  anchorLocation={this.props.tooltipState.location}
+                  loadFeatureProperties={this._loadFeatureProperties}
+                  findLayerById={this._findLayerById}
+                  closeTooltip={this._onTooltipClose}
+                  showFilterButtons={
+                    !!this.props.addFilters && this.props.tooltipState.type === TOOLTIP_TYPE.LOCKED
+                  }
+                  isLocked={this.props.tooltipState.type === TOOLTIP_TYPE.LOCKED}
+                  addFilters={this.props.addFilters}
+                  geoFields={this.props.geoFields}
+                  reevaluateTooltipPosition={updatePosition}
+                  loadFeatureGeometry={this._loadFeatureGeometry}
+                />
+              </I18nProvider>
+            )}
+          </DrawPopup>
+        ) : null}
       </div>
     );
   }
