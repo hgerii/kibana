@@ -40,6 +40,9 @@ export class DrawPopup extends Component {
     this.containerRef = element => (this._mbPopup._container = element);
     this.contentRef = element => (this._mbPopup._content = element);
     this.tipRef = element => (this._mbPopup._tip = element);
+
+    this._update = this._update.bind(this);
+    this._removeMap = this._removeMap.bind(this);
   }
 
   _calculateAnchorPosition() {
@@ -77,12 +80,32 @@ export class DrawPopup extends Component {
     return curLng !== newLng || curLat !== newLat;
   }
 
+  _setMap(map) {
+    if (map === this._mbPopup._map) {
+      return;
+    }
+
+    this._removeMap();
+
+    this._mbPopup._map = map;
+    this._mbPopup._map.on('move', this._update);
+    this._mbPopup._map.on('remove', this._removeMap);
+  }
+
+  _removeMap() {
+    if (this._mbPopup._map) {
+      this._mbPopup._map.off('move', this._update);
+      this._mbPopup._map.off('remove', this._removeMap);
+      this._mbPopup._map = null;
+    }
+  }
+
   _update() {
     requestAnimationFrame(() => {
       let updated = false;
       const { options = {}, location = [0, 0], map } = this.props;
 
-      if (!map || !this._mbPopup._container || !this._mbPopup._content) {
+      if (!map || !this._mbPopup || !this._mbPopup._container || !this._mbPopup._content) {
         return;
       }
 
@@ -93,17 +116,15 @@ export class DrawPopup extends Component {
         ...options,
       };
 
+      this._setMap(map);
+
       if (this._isLocationChanged()) {
         this._mbPopup.setLngLat(location);
         updated = true;
       }
 
-      if (map !== this._mbPopup._map) {
-        this._mbPopup.addTo(map);
-        updated = true;
-      }
-
-      // Ensure updated!!!
+      // To ensure this._mbPopup.pos is updated according to the current map positions/zoom level
+      // before recalculating the anchor position
       if (!updated) {
         this._mbPopup._update();
       }
@@ -111,6 +132,21 @@ export class DrawPopup extends Component {
       this._mbPopup.options.anchor = this._calculateAnchorPosition();
       this._mbPopup._update();
     });
+  }
+
+  _remove() {
+    // The removal of the HTML elmenents are handled by React.
+    // Nullify the containers otherwise mapboxgl.Popup removes them.
+    if (this._mbPopup) {
+      this._mbPopup._container = null;
+      this._mbPopup._content = null;
+      this._removeMap();
+    }
+
+    if (this.portalNode && this.portalNode.parentNode) {
+      this.portalNode.parentNode.removeChild(this.portalNode);
+      this.portalNode = null;
+    }
   }
 
   componentDidMount() {
@@ -121,31 +157,26 @@ export class DrawPopup extends Component {
     this._update();
   }
 
-  componentWillUnmount() {
-    // The removal of the HTML elmenents are handled by React.
-    // Nullify the containers otherwise mapboxgl.Popup removes them.
-    this._mbPopup._container = null;
-    this._mbPopup._content = null;
-    this._mbPopup.remove();
-
-    if (this.portalNode.parentNode) {
-      this.portalNode.parentNode.removeChild(this.portalNode);
-    }
-  }
+  componentWillUnmount = () => {
+    this._remove();
+  };
 
   render() {
     const { tip, children } = this.props;
 
-    return ReactDOM.createPortal(
-      <div className="mapboxgl-popup" ref={this.containerRef}>
-        <div className="mapboxgl-popup-tip" ref={this._mbPopup._tip}>
-          {tip}
-        </div>
-        <div className="mapboxgl-popup-content" ref={this.contentRef}>
-          {children({ updatePosition: this._update.bind(this) })}
-        </div>
-      </div>,
-      this.portalNode
+    return (
+      this.portalNode &&
+      ReactDOM.createPortal(
+        <div className="mapboxgl-popup" ref={this.containerRef}>
+          <div className="mapboxgl-popup-tip" ref={this._mbPopup._tip}>
+            {tip}
+          </div>
+          <div className="mapboxgl-popup-content" ref={this.contentRef}>
+            {children({ updatePosition: this._update.bind(this) })}
+          </div>
+        </div>,
+        this.portalNode
+      )
     );
   }
 }
